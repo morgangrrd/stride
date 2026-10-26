@@ -285,6 +285,16 @@ function showFormMessage(selector, message, isError = false) {
   element.classList.toggle("error", isError);
 }
 
+function supabaseErrorMessage(error) {
+  const message = error?.message || "";
+  if (/load failed|failed to fetch|networkerror|network request failed/i.test(message)) {
+    return location.protocol === "file:"
+      ? "Impossible de joindre Supabase depuis une page file://. Lance le site via http://localhost:8000 et vérifie l’URL et la clé publique de ton projet."
+      : "Impossible de joindre Supabase. Vérifie l’URL du projet, la clé publique et ta connexion réseau.";
+  }
+  return message || "La requête Supabase a échoué. Vérifie la configuration et réessaie.";
+}
+
 function updateAccountUi() {
   const label = document.querySelector("#account-label");
   const dot = document.querySelector("#account-status-dot");
@@ -307,6 +317,7 @@ function renderProfile() {
   authPanel.classList.toggle("hidden", Boolean(authUser));
   profileEditor.classList.toggle("hidden", !authUser);
   document.querySelector("#supabase-notice").classList.toggle("hidden", Boolean(supabaseClient));
+  document.querySelector("#file-origin-notice").classList.toggle("hidden", location.protocol !== "file:" || Boolean(authUser));
   if (!authUser) return;
   document.querySelector("#profile-name").value = state.profile.name || "";
   document.querySelector("#profile-plan").value = state.plan || "";
@@ -443,7 +454,7 @@ async function submitAuth(event) {
     showFormMessage("#profile-message", "Compte connecté. Complète ton profil pour créer ton programme.");
   } catch (error) {
     console.error("Échec de l'authentification Supabase.", error);
-    showFormMessage("#auth-message", error.message || "Connexion impossible. Vérifie tes informations et réessaie.", true);
+    showFormMessage("#auth-message", supabaseErrorMessage(error), true);
   } finally {
     button.disabled = false;
   }

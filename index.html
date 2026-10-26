@@ -97,6 +97,7 @@
               <button id="auth-switch" class="text-button auth-switch" type="button">J'ai déjà un compte — me connecter</button>
               <p id="auth-message" class="form-message" role="status" aria-live="polite"></p>
             </form>
+            <div id="file-origin-notice" class="setup-notice hidden"><strong>Ouvre le site via localhost pour tester l’inscription</strong><span>Cette page est lancée depuis un fichier local (<code>file://</code>). Dans un terminal, lance <code>python3 -m http.server 8000</code> depuis le dossier du site, puis ouvre <code>http://localhost:8000</code>. Ajoute aussi cette URL dans Supabase → Authentication → URL Configuration.</span></div>
             <div id="supabase-notice" class="setup-notice hidden"><strong>Connexion Supabase à configurer</strong><span>Renseigne l’URL de ton projet et sa clé publique dans <code>supabase-config.js</code>, puis crée la table avec le script <code>supabase-schema.sql</code>. Ne mets jamais de clé secrète ou de service_role dans le site.</span></div>
           </article>
 
