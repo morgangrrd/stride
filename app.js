@@ -92,6 +92,9 @@ let authUser = null;
 let authMode = "signup";
 let remoteSaveTimer;
 let requestedPlan = null;
+let trainingSessions = [];
+let trainingLoadError = "";
+let trainingLoadState = "idle";
 
 function readState() {
   try {
@@ -174,6 +177,45 @@ function getRaceDate() {
 
 function dateInputValue(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getWeekStart(date = new Date()) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12);
+  start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+  return start;
+}
+
+function getTrainingWeekStats(weekStart, sessions = trainingSessions) {
+  const start = dateInputValue(weekStart);
+  const endDate = new Date(weekStart);
+  endDate.setDate(endDate.getDate() + 6);
+  const end = dateInputValue(endDate);
+  const entries = sessions.filter(session => session.session_date >= start && session.session_date <= end);
+  const distance = entries.reduce((total, session) => total + Number(session.distance_km), 0);
+  const load = entries.reduce((total, session) => total + Number(session.duration_minutes) * Number(session.effort), 0);
+  const averageEffort = entries.length
+    ? entries.reduce((total, session) => total + Number(session.effort), 0) / entries.length
+    : null;
+  return { entries, distance, load, averageEffort };
+}
+
+function getRollingTrainingWeeks() {
+  const currentStart = getWeekStart();
+  return Array.from({ length: 12 }, (_value, index) => {
+    const start = new Date(currentStart);
+    start.setDate(start.getDate() - (11 - index) * 7);
+    return start;
+  });
+}
+
+function trainingSessionTypeLabel(type) {
+  return ({
+    easy: "Endurance facile",
+    quality: "Séance de qualité",
+    long: "Sortie longue",
+    trail: "Trail / montagne",
+    recovery: "Récupération"
+  })[type] || "Séance";
 }
 
 function defaultRaceDate(planDuration) {
@@ -328,16 +370,51 @@ function renderProfile() {
   updateReadinessMessage();
 }
 
+async function loadTrainingSessions(userId) {
+  const sessions = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabaseClient
+      .from("training_sessions")
+      .select("id, user_id, session_date, session_type, distance_km, duration_minutes, effort, elevation_gain_m, notes, created_at")
+      .eq("user_id", userId)
+      .order("session_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    sessions.push(...(data || []));
+    if (!data || data.length < pageSize) return sessions;
+  }
+}
+
 async function loadUserProfile(user) {
   if (!supabaseClient || !user) return;
   try {
-    const { data, error } = await supabaseClient
+    trainingLoadState = "loading";
+    trainingLoadError = "";
+    const profileRequest = supabaseClient
       .from("training_profiles")
       .select("*")
       .eq("user_id", user.id)
       .maybeSingle();
-    if (error) throw error;
+    const sessionsRequest = loadTrainingSessions(user.id)
+      .then(data => ({ data, error: null }))
+      .catch(error => ({ data: null, error }));
+    const [profileResult, sessionsResult] = await Promise.all([profileRequest, sessionsRequest]);
+    if (profileResult.error) throw profileResult.error;
     if (authUser?.id !== user.id) return;
+    if (sessionsResult.error) {
+      console.error("Impossible de charger les séances Supabase.", sessionsResult.error);
+      trainingSessions = [];
+      trainingLoadState = "error";
+      trainingLoadError = /training_sessions|schema cache|does not exist/i.test(sessionsResult.error?.message || "")
+        ? "Le carnet de séances n'est pas encore configuré. Exécute le nouveau script supabase-schema.sql dans Supabase."
+        : "Impossible de charger tes séances. Vérifie ta connexion puis réessaie.";
+    } else {
+      trainingSessions = sessionsResult.data;
+      trainingLoadState = "ready";
+    }
+    const data = profileResult.data;
     state = {
       plan: plans[data?.plan] ? data.plan : null,
       raceDate: typeof data?.race_date === "string" ? data.race_date : "",
@@ -359,6 +436,13 @@ async function loadUserProfile(user) {
     renderAll();
     updateAccountUi();
   } catch (error) {
+    if (authUser?.id === user.id) {
+      trainingSessions = [];
+      trainingLoadState = "error";
+      trainingLoadError = /training_sessions|schema cache|does not exist/i.test(error?.message || "")
+        ? "Le carnet de séances n'est pas encore configuré. Exécute le nouveau script supabase-schema.sql dans Supabase."
+        : "Impossible de charger tes données. Vérifie la connexion puis réessaie.";
+    }
     console.error("Impossible de charger le profil Supabase.", error);
     showToast("Impossible de charger ton profil. Vérifie la configuration Supabase et réessaie.");
   }
@@ -384,11 +468,17 @@ async function initializeSupabase() {
       window.clearTimeout(remoteSaveTimer);
       authUser = nextUser;
       if (authUser) {
+        trainingSessions = [];
+        trainingLoadError = "";
+        trainingLoadState = "loading";
         window.setTimeout(() => loadUserProfile(authUser).catch(error => {
           console.error("Impossible de recharger le profil après connexion.", error);
           showToast("Impossible de charger ton profil.");
         }), 0);
       } else {
+        trainingSessions = [];
+        trainingLoadError = "";
+        trainingLoadState = "idle";
         state = readState();
         currentWeek = state.plan ? getCurrentWeekIndex() : 0;
         renderAll();
@@ -591,6 +681,10 @@ function makeDashboardSession(session, date) {
 function renderDashboard() {
   const cardContainer = document.querySelector("#dashboard-sessions");
   cardContainer.replaceChildren();
+  const thisWeek = getTrainingWeekStats(getWeekStart());
+  const weeklyKm = thisWeek.distance.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  document.querySelector("#weekly-km").textContent = weeklyKm;
+  document.querySelector("#completion-caption").textContent = `${thisWeek.entries.length} sortie${thisWeek.entries.length === 1 ? "" : "s"} saisie${thisWeek.entries.length === 1 ? "" : "s"} · ${thisWeek.load.toLocaleString("fr-FR")} pts de charge.`;
   const date = getRaceDate();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -600,12 +694,10 @@ function renderDashboard() {
   const activeCards = document.querySelectorAll(".plan-card");
   activeCards.forEach(card => card.classList.toggle("selected", card.dataset.plan === state.plan));
   if (!state.plan) {
-    document.querySelector("#weekly-km").textContent = "0";
-    document.querySelector("#weekly-target").textContent = "Choisis un plan pour commencer";
+    document.querySelector("#weekly-target").textContent = authUser ? "Aucun plan hebdomadaire défini" : "Connecte-toi pour synchroniser tes sorties";
     document.querySelector("#weekly-progress-bar").style.width = "0%";
     document.querySelector("#completed-count").textContent = "0";
     document.querySelector("#session-count").textContent = "0";
-    document.querySelector("#completion-caption").textContent = "Chaque pas compte.";
     document.querySelector("#next-workout-name").textContent = "Choisis un objectif";
     document.querySelector("#next-workout-meta").textContent = "Ton programme apparaîtra ici.";
     return;
@@ -614,8 +706,6 @@ function renderDashboard() {
   const weekIndex = getCurrentWeekIndex();
   const week = getWeekData(weekIndex);
   const dates = getWeekDates(weekIndex);
-  let completedKm = 0;
-  let completedThisWeek = 0;
   let totalCompleted = 0;
   let totalSessions = 0;
   for (let i = 0; i < plan.duration; i++) {
@@ -624,16 +714,13 @@ function renderDashboard() {
       totalSessions++;
       if (checked(session.id)) {
         totalCompleted++;
-        if (i === weekIndex) { completedThisWeek++; completedKm += session.distance; }
       }
     });
   }
-  document.querySelector("#weekly-km").textContent = completedKm.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
   document.querySelector("#weekly-target").textContent = `sur ${week.volume.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km prévus`;
-  document.querySelector("#weekly-progress-bar").style.width = `${Math.min(100, completedKm / week.volume * 100)}%`;
+  document.querySelector("#weekly-progress-bar").style.width = `${Math.min(100, thisWeek.distance / week.volume * 100)}%`;
   document.querySelector("#completed-count").textContent = totalCompleted;
   document.querySelector("#session-count").textContent = totalSessions;
-  document.querySelector("#completion-caption").textContent = `${completedThisWeek} séance${completedThisWeek > 1 ? "s" : ""} cette semaine.`;
   cardContainer.replaceChildren(...week.sessions.map((session, index) => makeDashboardSession(session, dates[index])));
   const allSessions = [];
   for (let i = 0; i < plan.duration; i++) {
@@ -759,52 +846,216 @@ function renderProgram() {
   });
 }
 
-function renderProgress() {
-  if (!state.plan) {
-    document.querySelector("#progress-completed").textContent = "0";
-    document.querySelector("#progress-distance").textContent = "0";
-    document.querySelector("#progress-week").textContent = "—";
-    document.querySelector("#progress-phase").textContent = "Choisis un objectif";
-    document.querySelector("#history-summary").textContent = "Choisis un objectif pour commencer";
-    document.querySelector("#history-chart").replaceChildren();
+function updateWorkoutLoadPreview() {
+  const duration = Number(document.querySelector("#workout-duration").value);
+  const effort = Number(document.querySelector("#workout-effort").value);
+  document.querySelector("#workout-load-preview").textContent = duration > 0 && effort > 0
+    ? `${(duration * effort).toLocaleString("fr-FR")} points`
+    : "— points";
+}
+
+function renderWorkoutHistory() {
+  const history = document.querySelector("#workout-history");
+  history.replaceChildren();
+  trainingSessions.slice(0, 20).forEach(session => {
+    const item = document.createElement("article");
+    item.className = "workout-history-item";
+    const details = document.createElement("div");
+    details.className = "workout-history-details";
+    const title = document.createElement("strong");
+    title.textContent = trainingSessionTypeLabel(session.session_type);
+    const date = new Date(`${session.session_date}T12:00:00`);
+    const meta = document.createElement("span");
+    meta.textContent = `${formatDate(date, { day: "numeric", month: "short", year: "numeric" })} · ${Number(session.distance_km).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km · ${session.duration_minutes} min`;
+    const notes = document.createElement("p");
+    notes.textContent = session.notes || "";
+    details.append(title, meta);
+    if (session.notes) details.append(notes);
+    const indicators = document.createElement("div");
+    indicators.className = "workout-history-indicators";
+    const effort = document.createElement("span");
+    effort.className = `effort-chip effort-${Math.min(10, Math.max(1, Number(session.effort)))}`;
+    effort.textContent = `RPE ${session.effort}/10`;
+    const load = document.createElement("span");
+    load.className = "load-chip";
+    load.textContent = `${(Number(session.duration_minutes) * Number(session.effort)).toLocaleString("fr-FR")} pts`;
+    indicators.append(effort, load);
+    if (Number(session.elevation_gain_m) > 0) {
+      const elevation = document.createElement("span");
+      elevation.className = "elevation-chip";
+      elevation.textContent = `${Number(session.elevation_gain_m).toLocaleString("fr-FR")} m D+`;
+      indicators.append(elevation);
+    }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "workout-delete";
+    remove.textContent = "Supprimer";
+    remove.setAttribute("aria-label", `Supprimer la séance du ${formatDate(date)}`);
+    remove.addEventListener("click", () => deleteTrainingSession(session.id));
+    item.append(details, indicators, remove);
+    history.append(item);
+  });
+  if (!trainingSessions.length) {
+    const empty = document.createElement("p");
+    empty.className = "workout-history-empty";
+    empty.textContent = !authUser
+      ? "Connecte-toi pour afficher tes séances."
+      : trainingLoadState === "loading"
+      ? "Chargement de tes séances…"
+      : trainingLoadState === "error"
+        ? trainingLoadError
+        : "Aucune séance enregistrée sur les 12 dernières semaines. Ta prochaine sortie peut commencer ici.";
+    history.append(empty);
+  }
+}
+
+async function deleteTrainingSession(sessionId) {
+  if (!authUser || !supabaseClient || !window.confirm("Supprimer cette séance de ton carnet ?")) return;
+  const userId = authUser.id;
+  try {
+    const { data, error } = await supabaseClient
+      .from("training_sessions")
+      .delete()
+      .eq("id", sessionId)
+      .eq("user_id", userId)
+      .select("id");
+    if (error) throw error;
+    if (!data?.length) throw new Error("La séance n'a pas été trouvée ou n'appartient pas à ce compte.");
+    if (authUser?.id !== userId) return;
+    trainingSessions = trainingSessions.filter(session => session.id !== sessionId);
+    renderAll();
+    showToast("Séance supprimée.");
+  } catch (error) {
+    console.error("Impossible de supprimer la séance Supabase.", error);
+    showToast("Suppression impossible. Vérifie ta connexion puis réessaie.");
+  }
+}
+
+async function submitWorkout(event) {
+  event.preventDefault();
+  if (!authUser || !supabaseClient) {
+    showFormMessage("#workout-message", "Connecte-toi pour enregistrer tes séances.", true);
     return;
   }
-  const plan = plans[state.plan];
-  const currentIndex = getCurrentWeekIndex();
-  let completedCount = 0;
-  let completedDistance = 0;
+  if (trainingLoadState === "error") {
+    showFormMessage("#workout-message", trainingLoadError, true);
+    return;
+  }
+  const form = document.querySelector("#workout-form");
+  const date = document.querySelector("#workout-date").value;
+  const today = dateInputValue(new Date());
+  if (!date || date > today) {
+    showFormMessage("#workout-message", "Choisis la date d'une séance déjà réalisée (aujourd'hui ou avant).", true);
+    return;
+  }
+  const userId = authUser.id;
+  const button = document.querySelector("#workout-submit");
+  const payload = {
+    user_id: userId,
+    session_date: date,
+    session_type: document.querySelector("#workout-type").value,
+    distance_km: Number(document.querySelector("#workout-distance").value),
+    duration_minutes: Number(document.querySelector("#workout-duration").value),
+    effort: Number(document.querySelector("#workout-effort").value),
+    elevation_gain_m: Number(document.querySelector("#workout-elevation").value) || 0,
+    notes: document.querySelector("#workout-notes").value.trim()
+  };
+  button.disabled = true;
+  showFormMessage("#workout-message", "Enregistrement de ta séance…");
+  try {
+    const { data, error } = await supabaseClient
+      .from("training_sessions")
+      .insert(payload)
+      .select("id, user_id, session_date, session_type, distance_km, duration_minutes, effort, elevation_gain_m, notes, created_at")
+      .single();
+    if (error) throw error;
+    if (authUser?.id !== userId) return;
+    trainingSessions = [data, ...trainingSessions]
+      .sort((left, right) => right.session_date.localeCompare(left.session_date) || right.created_at.localeCompare(left.created_at));
+    form.reset();
+    document.querySelector("#workout-date").value = today;
+    showFormMessage("#workout-message", "Séance enregistrée dans ton compte.");
+    renderAll();
+    showToast("Sortie ajoutée à ton carnet.");
+  } catch (error) {
+    console.error("Impossible d'enregistrer la séance Supabase.", error);
+    showFormMessage("#workout-message", supabaseErrorMessage(error), true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderProgress() {
+  const isSignedIn = Boolean(authUser);
+  document.querySelector("#workout-login-prompt").classList.toggle("hidden", isSignedIn);
+  document.querySelector("#workout-recorder").classList.toggle("hidden", !isSignedIn);
+  const loadStatus = document.querySelector("#workout-load-status");
+  loadStatus.textContent = trainingLoadState === "loading"
+    ? "Chargement de tes données…"
+    : trainingLoadState === "error"
+      ? trainingLoadError
+      : "Ton carnet est synchronisé avec ton compte.";
+  document.querySelector("#workout-submit").disabled = !isSignedIn || trainingLoadState !== "ready";
+  if (isSignedIn && !document.querySelector("#workout-date").value) {
+    document.querySelector("#workout-date").value = dateInputValue(new Date());
+  }
+
+  const weeks = getRollingTrainingWeeks();
+  const weeklyStats = getTrainingWeekStats(weeks[weeks.length - 1]);
+  const recentSessions = trainingSessions.filter(session => session.session_date >= dateInputValue(weeks[0]));
+  const totalDistance = weeklyStats.distance.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  const totalLoad = weeklyStats.load.toLocaleString("fr-FR");
+  document.querySelector("#progress-completed").textContent = recentSessions.length.toLocaleString("fr-FR");
+  document.querySelector("#progress-distance").textContent = totalDistance;
+  document.querySelector("#progress-load").textContent = totalLoad;
+  document.querySelector("#progress-effort").textContent = weeklyStats.averageEffort === null
+    ? "—"
+    : weeklyStats.averageEffort.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  document.querySelector("#progress-plan-summary").textContent = state.plan
+    ? `Programme ${plans[state.plan].name} · semaine ${getCurrentWeekIndex() + 1} sur ${plans[state.plan].duration}. Les séances validées du programme restent distinctes de tes sorties enregistrées ici.`
+    : "Aucun programme de course sélectionné. Tu peux tout de même enregistrer et suivre tes sorties.";
+  document.querySelector("#history-summary").textContent = isSignedIn
+    ? `${recentSessions.length} séance${recentSessions.length === 1 ? "" : "s"} · ${recentSessions.reduce((sum, session) => sum + Number(session.distance_km), 0).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km sur 12 semaines`
+    : "Connecte-toi pour voir ta progression";
+
   const chart = document.querySelector("#history-chart");
   chart.replaceChildren();
-  const maxVolume = Math.max(...plan.weeks.map((_week, index) => getWeekData(index).volume));
-  for (let i = 0; i < plan.duration; i++) {
-    const data = getWeekData(i);
-    const done = data.sessions.filter(session => checked(session.id));
-    completedCount += done.length;
-    completedDistance += done.reduce((sum, session) => sum + session.distance, 0);
+  const chartStats = weeks.map(week => ({ week, ...getTrainingWeekStats(week) }));
+  const maxDistance = Math.max(1, ...chartStats.map(stats => stats.distance));
+  const maxLoad = Math.max(1, ...chartStats.map(stats => stats.load));
+  chartStats.forEach(({ week, entries, distance, load, averageEffort }) => {
     const column = document.createElement("div");
-    column.className = "chart-week";
-    const track = document.createElement("div");
-    track.className = "chart-bar-track";
-    const plannedBar = document.createElement("span");
-    plannedBar.className = "chart-bar";
-    plannedBar.style.height = `${Math.max(3, data.volume / maxVolume * 105)}px`;
-    plannedBar.setAttribute("title", `${data.volume.toLocaleString("fr-FR")} km planifiés`);
-    const doneBar = document.createElement("span");
-    doneBar.className = "chart-bar done";
-    doneBar.style.height = `${Math.max(done.length ? 3 : 0, done.reduce((sum, session) => sum + session.distance, 0) / maxVolume * 105)}px`;
-    doneBar.setAttribute("title", `${done.length} séance${done.length > 1 ? "s" : ""} terminée${done.length > 1 ? "s" : ""}`);
-    track.append(plannedBar, doneBar);
+    column.className = "chart-week actual-chart-week";
+    column.setAttribute("aria-label", `${formatDate(week, { day: "numeric", month: "short" })} : ${distance.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km, ${load} points de charge${averageEffort === null ? "" : `, RPE moyen ${averageEffort.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}`}`);
+    const values = document.createElement("span");
+    values.className = "chart-week-value";
+    values.textContent = distance ? `${distance.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km` : "—";
+    const loadValue = document.createElement("span");
+    loadValue.className = "chart-week-load";
+    loadValue.textContent = load ? `${load.toLocaleString("fr-FR")} pts` : "—";
+    const bars = document.createElement("div");
+    bars.className = "actual-chart-bars";
+    const distanceBar = document.createElement("span");
+    distanceBar.className = "chart-bar distance-bar";
+    distanceBar.style.height = `${distance ? Math.max(4, distance / maxDistance * 104) : 0}px`;
+    distanceBar.title = `${distance.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km`;
+    const loadBar = document.createElement("span");
+    loadBar.className = "chart-bar load-bar";
+    loadBar.style.height = `${load ? Math.max(4, load / maxLoad * 104) : 0}px`;
+    loadBar.title = `${load.toLocaleString("fr-FR")} points de charge`;
+    bars.append(distanceBar, loadBar);
+    const rpe = document.createElement("span");
+    rpe.className = "chart-week-rpe";
+    rpe.textContent = averageEffort === null
+      ? "RPE —"
+      : `RPE ${averageEffort.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}`;
     const label = document.createElement("span");
     label.className = "chart-label";
-    label.textContent = `S${i + 1}`;
-    column.append(track, label);
+    label.textContent = formatDate(week, { day: "numeric", month: "short" });
+    column.append(values, loadValue, bars, rpe, label);
     chart.append(column);
-  }
-  document.querySelector("#progress-completed").textContent = completedCount;
-  document.querySelector("#progress-distance").textContent = completedDistance.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
-  document.querySelector("#progress-week").textContent = `${currentIndex + 1}/${plan.duration}`;
-  document.querySelector("#progress-phase").textContent = currentIndex === plan.duration - 1 ? "Semaine de course" : "Du cycle";
-  document.querySelector("#history-summary").textContent = `${completedCount} sortie${completedCount > 1 ? "s" : ""} · ${completedDistance.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km enregistrés`;
+  });
+  renderWorkoutHistory();
 }
 
 function renderAll() {
@@ -838,6 +1089,11 @@ document.querySelector("#auth-form").addEventListener("submit", submitAuth);
 document.querySelector("#auth-switch").addEventListener("click", () => setAuthMode(authMode === "signup" ? "login" : "signup"));
 document.querySelector("#profile-editor").addEventListener("submit", createProgram);
 document.querySelector("#save-profile").addEventListener("click", saveProfileOnly);
+document.querySelector("#workout-form").addEventListener("submit", submitWorkout);
+["#workout-duration", "#workout-effort"].forEach(selector => {
+  document.querySelector(selector).addEventListener("input", updateWorkoutLoadPreview);
+  document.querySelector(selector).addEventListener("change", updateWorkoutLoadPreview);
+});
 document.querySelector("#sign-out").addEventListener("click", async () => {
   if (!supabaseClient) return;
   try {
@@ -845,6 +1101,9 @@ document.querySelector("#sign-out").addEventListener("click", async () => {
     if (error) throw error;
     window.clearTimeout(remoteSaveTimer);
     authUser = null;
+    trainingSessions = [];
+    trainingLoadError = "";
+    trainingLoadState = "idle";
     state = readState();
     renderAll();
     setView("profile");
@@ -880,6 +1139,9 @@ if (state.plan) {
 }
 setAuthMode("signup");
 document.querySelector("#auth-name").closest(".form-field").classList.remove("hidden");
+document.querySelector("#workout-date").value = dateInputValue(new Date());
+document.querySelector("#workout-date").max = dateInputValue(new Date());
+updateWorkoutLoadPreview();
 initializeSupabase();
 renderAll();
 setView("dashboard");

@@ -9,10 +9,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
     <script src="supabase-config.js?v=2" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-    <script src="app.js" defer></script>
+    <script src="app.js?v=2" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -125,9 +125,38 @@
         </section>
 
         <section id="progress-view" class="view hidden">
-          <div class="page-heading"><div><p class="eyebrow">UN PAS APRÈS L'AUTRE</p><h1>Ma progression</h1><p class="intro">Ta régularité se construit sortie après sortie.</p></div><button class="outline-button" data-go="program">Ouvrir le programme <span>→</span></button></div>
-          <div class="progress-stats"><article class="stat-card"><span class="stat-label">SORTIES VALIDÉES</span><div class="stat-value"><strong id="progress-completed">0</strong><span>séances</span></div></article><article class="stat-card"><span class="stat-label">DISTANCE ENREGISTRÉE</span><div class="stat-value"><strong id="progress-distance">0</strong><span>km</span></div></article><article class="stat-card"><span class="stat-label">SEMAINE DU PLAN</span><div class="stat-value"><strong id="progress-week">—</strong><span id="progress-phase">À définir</span></div></article></div>
-          <article class="panel history-panel"><div class="panel-heading"><div><p class="eyebrow">VUE D'ENSEMBLE</p><h2>Ton cycle d'entraînement</h2></div><span id="history-summary" class="section-note">Aucune sortie validée pour l'instant</span></div><div id="history-chart" class="history-chart"></div><div class="chart-legend"><span><i class="legend-planned"></i> Kilomètres planifiés</span><span><i class="legend-done"></i> Séances terminées</span></div></article>
+          <div class="page-heading"><div><p class="eyebrow">UN PAS APRÈS L'AUTRE</p><h1>Ma progression</h1><p class="intro">Enregistre tes sorties pour suivre tes kilomètres, ta charge et ton ressenti semaine après semaine.</p></div><button class="outline-button" data-go="program">Ouvrir mon programme <span>→</span></button></div>
+          <div class="progress-stats">
+            <article class="stat-card"><span class="stat-label">SORTIES · 12 SEM.</span><div class="stat-value"><strong id="progress-completed">0</strong><span>séances</span></div></article>
+            <article class="stat-card"><span class="stat-label">DISTANCE CETTE SEMAINE</span><div class="stat-value"><strong id="progress-distance">0</strong><span>km</span></div></article>
+            <article class="stat-card"><span class="stat-label">CHARGE CETTE SEMAINE</span><div class="stat-value"><strong id="progress-load">0</strong><span>points</span></div></article>
+            <article class="stat-card"><span class="stat-label">RESSENTI MOYEN · RPE</span><div class="stat-value"><strong id="progress-effort">—</strong><span>/ 10</span></div></article>
+          </div>
+          <p id="progress-plan-summary" class="progress-plan-summary"></p>
+          <div id="workout-login-prompt" class="panel workout-auth-prompt">
+            <div><p class="eyebrow">CARNET PERSONNEL</p><h2>Connecte-toi pour enregistrer tes sorties</h2><p>Chaque séance restera privée et sera synchronisée avec ton compte.</p></div>
+            <button class="primary-button" data-view="profile">Ouvrir mon profil <span>→</span></button>
+          </div>
+          <div id="workout-recorder" class="workout-recorder-layout hidden">
+            <article class="panel workout-form-panel">
+              <div class="panel-heading"><div><p class="eyebrow">NOUVELLE SÉANCE</p><h2>Ajouter une sortie</h2></div><span class="section-note">Enregistrée dans ton compte</span></div>
+              <form id="workout-form" class="form-grid workout-form">
+                <label class="form-field"><span>DATE</span><input id="workout-date" name="session_date" type="date" required></label>
+                <label class="form-field"><span>TYPE DE SÉANCE</span><select id="workout-type" name="session_type" required><option value="easy">Endurance facile</option><option value="quality">Séance de qualité</option><option value="long">Sortie longue</option><option value="trail">Trail / montagne</option><option value="recovery">Récupération</option></select></label>
+                <label class="form-field"><span>DISTANCE RÉALISÉE</span><span class="input-suffix"><input id="workout-distance" name="distance_km" type="number" min="0.1" max="200" step="0.1" required placeholder="Ex. 8,5"><span>km</span></span></label>
+                <label class="form-field"><span>DURÉE</span><span class="input-suffix"><input id="workout-duration" name="duration_minutes" type="number" min="1" max="1440" step="1" required placeholder="Ex. 52"><span>minutes</span></span></label>
+                <label class="form-field"><span>RESSENTI DE L'EFFORT · RPE</span><select id="workout-effort" name="effort" required><option value="">Choisir / 10</option><option value="1">1 · Très facile</option><option value="2">2 · Facile</option><option value="3">3 · Facile</option><option value="4">4 · Modéré</option><option value="5">5 · Soutenu</option><option value="6">6 · Difficile</option><option value="7">7 · Difficile</option><option value="8">8 · Très difficile</option><option value="9">9 · Presque maximal</option><option value="10">10 · Maximal</option></select></label>
+                <label class="form-field"><span>DÉNIVELÉ POSITIF · OPTIONNEL</span><span class="input-suffix"><input id="workout-elevation" name="elevation_gain_m" type="number" min="0" max="10000" step="10" placeholder="Ex. 650"><span>m D+</span></span></label>
+                <label class="form-field workout-notes-field"><span>NOTES · OPTIONNEL</span><textarea id="workout-notes" name="notes" maxlength="500" rows="2" placeholder="Terrain, météo, sensations, ravitaillement…"></textarea></label>
+                <div class="workout-load-preview"><span>CHARGE DE LA SÉANCE</span><strong id="workout-load-preview">— points</strong><small>Durée en minutes × effort perçu (RPE)</small></div>
+                <button id="workout-submit" class="primary-button" type="submit">Enregistrer la séance <span>→</span></button>
+                <p id="workout-message" class="form-message" role="status" aria-live="polite"></p>
+              </form>
+            </article>
+            <aside class="panel workout-tip-panel"><span class="profile-privacy-icon">↗</span><p class="eyebrow">COMMENT LIRE LA CHARGE ?</p><h2>Durée × ressenti</h2><p>La charge sRPE multiplie la durée de la séance par ton effort perçu. Exemple : 50 minutes à RPE 4 = 200 points.</p><p>Note ton ressenti juste après la sortie. Le dénivelé et tes notes aident aussi à replacer les séances de trail dans leur contexte.</p><p id="workout-load-status" class="workout-load-status" role="status"></p></aside>
+          </div>
+          <article class="panel history-panel actual-history-panel"><div class="panel-heading"><div><p class="eyebrow">VOLUME ET CHARGE RÉELS</p><h2>12 dernières semaines</h2></div><span id="history-summary" class="section-note">Connecte-toi pour voir ta progression</span></div><div id="history-chart" class="history-chart actual-history-chart" role="img" aria-label="Kilomètres, charge et ressenti hebdomadaires"></div><div class="chart-legend"><span><i class="legend-distance"></i> Kilomètres</span><span><i class="legend-load"></i> Charge sRPE</span><span><i class="legend-effort"></i> RPE moyen</span></div><p class="chart-scale-note">Les valeurs de km et de charge sont indiquées pour chaque semaine; les hauteurs des barres sont mises à l'échelle séparément.</p></article>
+          <article class="panel workout-history-panel"><div class="panel-heading"><div><p class="eyebrow">CARNET DE SORTIES</p><h2>Dernières séances</h2></div><span class="section-note">Tes 20 sorties les plus récentes</span></div><div id="workout-history" class="workout-history-list"></div></article>
           <article class="panel training-notes"><p class="eyebrow">À GARDER EN TÊTE</p><div class="notes-grid"><div><span class="note-index">01</span><h3>La progressivité d'abord</h3><p>Les semaines allégées prévues dans le plan sont intentionnelles. Ne les remplace pas par du volume supplémentaire.</p></div><div><span class="note-index">02</span><h3>Écoute les signaux</h3><p>Une fatigue inhabituelle ou une douleur persistante mérite du repos et, si besoin, l'avis d'un professionnel de santé.</p></div><div><span class="note-index">03</span><h3>Pas de rattrapage</h3><p>Si tu manques une sortie, reprends le plan là où tu en es. Évite d'empiler deux séances pour compenser.</p></div></div></article>
         </section>
         <footer class="main-footer"><span>STRIDE<span class="brand-period">.</span> · TON CARNET DE COURSE</span><span>Conçu pour avancer à ton rythme.</span></footer>
