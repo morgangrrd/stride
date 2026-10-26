@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101914">
+    <meta name="description" content="Un carnet d'entraînement pour préparer votre semi-marathon, marathon ou trail de 50 km.">
+    <title>Stride — mon carnet de course</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="supabase-config.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="Stride, accueil"><span class="brand-mark">S</span><span>stride<span class="brand-period">.</span></span></a>
+        <span class="sidebar-label">MENU</span>
+        <nav class="side-nav" aria-label="Navigation principale">
+          <button class="nav-link active" data-view="dashboard" aria-label="Vue d'ensemble"><span class="nav-icon">◫</span> Vue d'ensemble</button>
+          <button class="nav-link" data-view="program" aria-label="Mon programme"><span class="nav-icon">▤</span> Mon programme</button>
+          <button class="nav-link" data-view="progress" aria-label="Ma progression"><span class="nav-icon">↗</span> Ma progression</button>
+          <button class="nav-link" data-view="profile" aria-label="Mon profil"><span class="nav-icon">◎</span> Profil</button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="sidebar-tip"><span class="tip-icon">✳</span><p>La régularité bat l'intensité. Une séance manquée n'est pas une séance à rattraper.</p></div>
+          <p class="sidebar-foot">TON CARNET DE COURSE · 2026</p>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="breadcrumb"><span>ESPACE COUREUR</span><span class="crumb-divider">/</span><span id="breadcrumb-current">Vue d'ensemble</span></div>
+          <div class="topbar-right"><span class="status-dot" id="account-status-dot"></span><span id="account-label">Mode visiteur</span><button class="avatar avatar-button" data-view="profile" aria-label="Ouvrir mon profil">C</button></div>
+        </header>
+
+        <section id="dashboard-view" class="view">
+          <div class="welcome-row">
+            <div><p class="eyebrow"><span class="live-dot"></span> TON ESPACE D'ENTRAÎNEMENT</p><h1>Chaque sortie<br>te <span class="highlight">rapproche.</span></h1><p class="intro">Un plan clair, une sortie à la fois. Ta prochaine ligne de départ se prépare ici.</p></div>
+            <div class="race-countdown"><span class="countdown-label">JOURS AVANT LA COURSE</span><strong id="countdown">—</strong><span id="countdown-race" class="countdown-race">Choisis ta course</span><span class="countdown-decoration">↗</span></div>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card"><span class="stat-label">CETTE SEMAINE <span class="stat-icon green">↗</span></span><div class="stat-value"><strong id="weekly-km">0</strong><span>km réalisés</span></div><div class="stat-foot"><span id="weekly-target">sur 0 km prévus</span><div class="mini-progress"><i id="weekly-progress-bar"></i></div></div></article>
+            <article class="stat-card"><span class="stat-label">SÉANCES TERMINÉES <span class="stat-icon">✓</span></span><div class="stat-value"><strong id="completed-count">0</strong><span>sur <b id="session-count">0</b> prévues</span></div><div class="stat-foot"><span id="completion-caption">Chaque pas compte.</span><span class="stat-neutral">● Suivi à ton rythme</span></div></article>
+            <article class="stat-card next-workout-card"><span class="stat-label">PROCHAINE SORTIE <span class="stat-icon orange">↗</span></span><div class="next-workout"><strong id="next-workout-name">Choisis un objectif</strong><span id="next-workout-meta">Ton programme apparaîtra ici.</span></div><button class="text-button" data-go="program">Voir mon programme <span>→</span></button></article>
+          </div>
+
+          <div class="section-heading"><div><p class="eyebrow">LE BON PLAN POUR TOI</p><h2>Choisis ton prochain défi</h2></div><span class="section-note">Des cycles progressifs · 3 à 5 sorties par semaine</span></div>
+          <div class="plan-grid">
+            <button class="plan-card" data-plan="half">
+              <span class="plan-card-top"><span class="plan-category">ROUTE · 21,1 KM</span><span class="plan-arrow">↗</span></span>
+              <span class="plan-title">Semi-marathon</span><span class="plan-description">Un premier semi ou un nouveau record, avec une progression maîtrisée.</span>
+              <span class="plan-card-bottom"><span>12 SEMAINES</span><span class="plan-level">Base régulière</span></span>
+            </button>
+            <button class="plan-card" data-plan="marathon">
+              <span class="plan-card-top"><span class="plan-category">ROUTE · 42,2 KM</span><span class="plan-arrow">↗</span></span>
+              <span class="plan-title">Marathon</span><span class="plan-description">Construire l'endurance et apprendre à gérer l'allure sur la distance.</span>
+              <span class="plan-card-bottom"><span>16 SEMAINES</span><span class="plan-level">Expérience requise</span></span>
+            </button>
+            <button class="plan-card" data-plan="trail">
+              <span class="plan-card-top"><span class="plan-category">TRAIL · 50 KM</span><span class="plan-arrow">↗</span></span>
+              <span class="plan-title">Trail 50 km</span><span class="plan-description">Du temps sur les jambes, du dénivelé et de l'autonomie en terrain varié.</span>
+              <span class="plan-card-bottom"><span>16 SEMAINES</span><span class="plan-level">Trail confirmé</span></span>
+            </button>
+          </div>
+
+          <div class="lower-grid">
+            <article class="panel week-panel"><div class="panel-heading"><div><p class="eyebrow">TON RYTHME</p><h2>Cette semaine</h2></div><button class="text-button" data-go="program">Tout voir <span>→</span></button></div><div id="dashboard-sessions" class="dashboard-sessions"></div></article>
+            <article class="panel principle-panel"><div class="principle-number">01 <span>— 03</span></div><p class="eyebrow">LA MÉTHODE STRIDE</p><h2>Le facile doit<br>rester facile.</h2><p>La majorité des kilomètres se courent à une allure confortable. Garde les efforts soutenus pour les séances prévues, et laisse ton corps assimiler entre les deux.</p><span class="principle-mark">✳</span></article>
+          </div>
+          <p class="disclaimer">Les programmes sont des trames génériques destinées à des personnes déjà aptes à courir. Ils ne remplacent pas un avis médical ni l'accompagnement d'un entraîneur. Ajuste ou arrête l'effort en cas de douleur inhabituelle.</p>
+        </section>
+
+        <section id="program-view" class="view hidden">
+          <div class="page-heading"><div><p class="eyebrow">TON PLAN, SEMAINE APRÈS SEMAINE</p><h1>Mon programme</h1><p class="intro">Un entraînement structuré. Du repos entre les efforts. À toi de jouer.</p></div><button class="outline-button" id="change-plan">Changer d'objectif <span>↗</span></button></div>
+          <article class="program-banner"><div><p class="banner-label">OBJECTIF EN COURS</p><h2 id="program-name">Semi-marathon</h2><p id="program-description">Un plan de 12 semaines avec quatre sorties par semaine.</p><p id="plan-timeline-warning" class="timeline-warning hidden" role="status"></p></div><label class="date-control"><span>DATE DE LA COURSE</span><input type="date" id="race-date"></label><span class="banner-decoration">✳</span></article>
+          <div class="program-facts"><div><span>DURÉE DU PLAN</span><strong id="plan-duration">12 semaines</strong></div><div><span>FRÉQUENCE</span><strong id="program-frequency">4 sorties / semaine</strong></div><div><span>VOLUME DE LA SEMAINE</span><strong id="plan-volume">— km</strong></div><div><span>PHASE ACTUELLE</span><strong id="current-phase">—</strong></div></div>
+          <div class="program-layout">
+            <article class="panel calendar-panel"><div class="panel-heading"><div><p class="eyebrow">CALENDRIER D'ENTRAÎNEMENT</p><h2 id="week-heading">Semaine 1</h2></div><div class="week-controls"><button id="prev-week" aria-label="Semaine précédente">←</button><span id="week-position">1 / 12</span><button id="next-week" aria-label="Semaine suivante">→</button></div></div><div class="week-meta"><span id="week-date-range"></span><span id="week-total">0 km planifiés</span></div><div id="sessions-list" class="sessions-list"></div><div id="week-note" class="week-note"></div></article>
+            <aside class="panel guidance-panel"><p class="eyebrow">REPÈRES D'ENTRAÎNEMENT</p><h2>Les clés du plan</h2><div id="plan-guidance"></div><div class="fuel-tip"><span>↗</span><p><strong>Récupérer fait partie du plan.</strong><br>Sommeil, hydratation et alimentation régulière soutiennent l'adaptation à la charge.</p></div></aside>
+          </div>
+        </section>
+
+        <section id="profile-view" class="view hidden">
+          <div class="page-heading"><div><p class="eyebrow">TON COMPTE ET TON OBJECTIF</p><h1>Mon profil</h1><p class="intro">Crée ton compte, renseigne ta base actuelle et génère un programme adapté à ton objectif.</p></div></div>
+          <article id="auth-panel" class="panel auth-panel">
+            <div class="auth-copy"><p class="eyebrow">ESPACE PERSONNEL</p><h2 id="auth-title">Crée ton compte Stride</h2><p id="auth-description">Ton profil, ton programme et tes sorties seront enregistrés dans ton compte et synchronisés sur tes appareils.</p><div class="auth-benefit"><span>✓</span> Un programme enregistré en ligne, réservé à ton compte</div><div class="auth-benefit"><span>✓</span> Retrouve ta progression en te reconnectant</div></div>
+            <form id="auth-form" class="form-grid auth-form">
+              <label class="form-field auth-name-field"><span>TON NOM</span><input id="auth-name" name="name" type="text" autocomplete="name" maxlength="80" placeholder="Camille"></label>
+              <label class="form-field"><span>ADRESSE E-MAIL</span><input id="auth-email" name="email" type="email" autocomplete="email" required placeholder="toi@exemple.fr"></label>
+              <label class="form-field"><span>MOT DE PASSE</span><input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="8" required placeholder="8 caractères minimum"></label>
+              <button id="auth-submit" class="primary-button" type="submit">Créer mon compte <span>→</span></button>
+              <button id="auth-switch" class="text-button auth-switch" type="button">J'ai déjà un compte — me connecter</button>
+              <p id="auth-message" class="form-message" role="status" aria-live="polite"></p>
+            </form>
+            <div id="supabase-notice" class="setup-notice hidden"><strong>Connexion Supabase à configurer</strong><span>Renseigne l’URL de ton projet et sa clé publique dans <code>supabase-config.js</code>, puis crée la table avec le script <code>supabase-schema.sql</code>. Ne mets jamais de clé secrète ou de service_role dans le site.</span></div>
+          </article>
+
+          <form id="profile-editor" class="hidden">
+            <div class="profile-layout">
+              <article class="panel profile-form-panel">
+                <div class="panel-heading"><div><p class="eyebrow">TES INFORMATIONS</p><h2>Préparons ton cycle</h2></div><button id="sign-out" class="text-button" type="button">Se déconnecter ↗</button></div>
+                <p class="form-intro">Indique ton volume récent réel, pas un objectif. Les prérequis permettent de vérifier que le cycle choisi correspond à ta base actuelle.</p>
+                <div class="form-grid profile-fields">
+                  <label class="form-field"><span>NOM AFFICHÉ</span><input id="profile-name" type="text" maxlength="80" required placeholder="Camille"></label>
+                  <label class="form-field"><span>OBJECTIF</span><select id="profile-plan" required><option value="">Choisir une course</option><option value="half">Semi-marathon · 21,1 km</option><option value="marathon">Marathon · 42,2 km</option><option value="trail">Trail · 50 km</option></select></label>
+                  <label class="form-field"><span>DATE DE LA COURSE</span><input id="profile-race-date" type="date" required></label>
+                  <label class="form-field"><span>VOLUME HEBDOMADAIRE ACTUEL</span><span class="input-suffix"><input id="profile-weekly-km" type="number" min="0" max="200" step="1" required placeholder="Ex. 25"><span>km / semaine</span></span></label>
+                  <label class="form-field"><span>PLUS LONGUE SORTIE RÉCENTE</span><span class="input-suffix"><input id="profile-longest-run" type="number" min="0" max="100" step="0.5" required placeholder="Ex. 12"><span>km</span></span></label>
+                  <label class="form-field"><span>SORTIES POSSIBLES PAR SEMAINE</span><select id="profile-sessions" required><option value="3">3 sorties</option><option value="4">4 sorties</option><option value="5">5 sorties</option></select></label>
+                </div>
+                <div id="readiness-message" class="readiness-message" role="status"></div>
+                <div class="profile-actions"><button id="save-profile" class="outline-button" type="button">Enregistrer mon profil</button><button class="primary-button" type="submit">Créer mon programme <span>→</span></button></div>
+                <p id="profile-message" class="form-message" role="status" aria-live="polite"></p>
+              </article>
+              <aside class="panel profile-privacy"><span class="profile-privacy-icon">◎</span><p class="eyebrow">TES DONNÉES</p><h2>Un espace par compte.</h2><p>Ton programme et ta progression sont liés à ton compte. La base Supabase applique des règles d’accès pour que chaque personne ne puisse lire et modifier que ses propres données.</p><p class="privacy-footnote">Ton mot de passe est géré par Supabase Auth, jamais enregistré dans ton profil d’entraînement.</p></aside>
+            </div>
+          </form>
+          <p class="disclaimer">Les plans s’adressent à des personnes déjà entraînées et ne remplacent pas un avis médical. En cas de douleur ou de reprise après blessure, demande conseil à un professionnel de santé.</p>
+        </section>
+
+        <section id="progress-view" class="view hidden">
+          <div class="page-heading"><div><p class="eyebrow">UN PAS APRÈS L'AUTRE</p><h1>Ma progression</h1><p class="intro">Ta régularité se construit sortie après sortie.</p></div><button class="outline-button" data-go="program">Ouvrir le programme <span>→</span></button></div>
+          <div class="progress-stats"><article class="stat-card"><span class="stat-label">SORTIES VALIDÉES</span><div class="stat-value"><strong id="progress-completed">0</strong><span>séances</span></div></article><article class="stat-card"><span class="stat-label">DISTANCE ENREGISTRÉE</span><div class="stat-value"><strong id="progress-distance">0</strong><span>km</span></div></article><article class="stat-card"><span class="stat-label">SEMAINE DU PLAN</span><div class="stat-value"><strong id="progress-week">—</strong><span id="progress-phase">À définir</span></div></article></div>
+          <article class="panel history-panel"><div class="panel-heading"><div><p class="eyebrow">VUE D'ENSEMBLE</p><h2>Ton cycle d'entraînement</h2></div><span id="history-summary" class="section-note">Aucune sortie validée pour l'instant</span></div><div id="history-chart" class="history-chart"></div><div class="chart-legend"><span><i class="legend-planned"></i> Kilomètres planifiés</span><span><i class="legend-done"></i> Séances terminées</span></div></article>
+          <article class="panel training-notes"><p class="eyebrow">À GARDER EN TÊTE</p><div class="notes-grid"><div><span class="note-index">01</span><h3>La progressivité d'abord</h3><p>Les semaines allégées prévues dans le plan sont intentionnelles. Ne les remplace pas par du volume supplémentaire.</p></div><div><span class="note-index">02</span><h3>Écoute les signaux</h3><p>Une fatigue inhabituelle ou une douleur persistante mérite du repos et, si besoin, l'avis d'un professionnel de santé.</p></div><div><span class="note-index">03</span><h3>Pas de rattrapage</h3><p>Si tu manques une sortie, reprends le plan là où tu en es. Évite d'empiler deux séances pour compenser.</p></div></div></article>
+        </section>
+        <footer class="main-footer"><span>STRIDE<span class="brand-period">.</span> · TON CARNET DE COURSE</span><span>Conçu pour avancer à ton rythme.</span></footer>
+      </main>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
