@@ -95,6 +95,7 @@ let requestedPlan = null;
 let trainingSessions = [];
 let trainingLoadError = "";
 let trainingLoadState = "idle";
+let returnAfterAuthView = null;
 
 function readState() {
   try {
@@ -540,8 +541,11 @@ async function submitAuth(event) {
       updateReadinessMessage();
       requestedPlan = null;
     }
-    setView("profile");
-    showFormMessage("#profile-message", "Compte connecté. Complète ton profil pour créer ton programme.");
+    const destination = returnAfterAuthView || "profile";
+    returnAfterAuthView = null;
+    setView(destination);
+    if (destination === "progress") showToast("Compte connecté. Tu peux maintenant ajouter ta sortie.");
+    else showFormMessage("#profile-message", "Compte connecté. Complète ton profil pour créer ton programme.");
   } catch (error) {
     console.error("Échec de l'authentification Supabase.", error);
     showFormMessage("#auth-message", supabaseErrorMessage(error), true);
@@ -1079,7 +1083,11 @@ function selectPlan(key) {
   if (!authUser) showToast("Crée un compte ou connecte-toi pour générer ton programme personnalisé.");
 }
 
-document.querySelectorAll("[data-view]").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
+document.querySelectorAll("[data-view]").forEach(button => button.addEventListener("click", () => {
+  if (button.id === "workout-login-button") returnAfterAuthView = "progress";
+  else if (button.dataset.view !== "profile") returnAfterAuthView = null;
+  setView(button.dataset.view);
+}));
 document.querySelectorAll("[data-go]").forEach(button => button.addEventListener("click", () => setView(button.dataset.go)));
 document.querySelectorAll("[data-plan]").forEach(button => button.addEventListener("click", () => selectPlan(button.dataset.plan)));
 document.querySelector("#change-plan").addEventListener("click", () => setView("dashboard"));

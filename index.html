@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="style.css?v=2">
     <script src="supabase-config.js?v=2" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-    <script src="app.js?v=2" defer></script>
+    <script src="app.js?v=3" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -135,7 +135,7 @@
           <p id="progress-plan-summary" class="progress-plan-summary"></p>
           <div id="workout-login-prompt" class="panel workout-auth-prompt">
             <div><p class="eyebrow">CARNET PERSONNEL</p><h2>Connecte-toi pour enregistrer tes sorties</h2><p>Chaque séance restera privée et sera synchronisée avec ton compte.</p></div>
-            <button class="primary-button" data-view="profile">Ouvrir mon profil <span>→</span></button>
+            <button id="workout-login-button" class="primary-button" data-view="profile">Se connecter pour ajouter une sortie <span>→</span></button>
           </div>
           <div id="workout-recorder" class="workout-recorder-layout hidden">
             <article class="panel workout-form-panel">
