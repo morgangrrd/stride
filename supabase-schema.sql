@@ -46,11 +46,21 @@ create table if not exists public.training_sessions (
   effort smallint not null check (effort between 1 and 10),
   elevation_gain_m integer not null default 0 check (elevation_gain_m between 0 and 10000),
   notes text not null default '' check (char_length(notes) <= 500),
+  planned_session_id text,
+  planned_plan_signature text,
   created_at timestamptz not null default now()
 );
 
+alter table public.training_sessions
+  add column if not exists planned_session_id text,
+  add column if not exists planned_plan_signature text;
+
 create index if not exists training_sessions_user_date_idx
   on public.training_sessions (user_id, session_date desc, created_at desc);
+
+create unique index if not exists training_sessions_plan_link_idx
+  on public.training_sessions (user_id, planned_plan_signature, planned_session_id)
+  where planned_plan_signature is not null and planned_session_id is not null;
 
 alter table public.training_sessions enable row level security;
 

@@ -338,12 +338,19 @@ function supabaseErrorMessage(error) {
   return message || "La requête Supabase a échoué. Vérifie la configuration et réessaie.";
 }
 
+function accountDisplayName() {
+  return state.profile.name ||
+    authUser?.user_metadata?.display_name ||
+    authUser?.email?.split("@")[0] ||
+    "Coureur";
+}
+
 function updateAccountUi() {
   const label = document.querySelector("#account-label");
   const dot = document.querySelector("#account-status-dot");
   const avatar = document.querySelector(".avatar-button");
   if (authUser) {
-    const name = state.profile.name || authUser.email || "Mon compte";
+    const name = accountDisplayName();
     label.textContent = name;
     avatar.textContent = name.trim().charAt(0).toUpperCase() || "C";
     dot.style.background = "#8bcf57";
@@ -362,7 +369,30 @@ function renderProfile() {
   document.querySelector("#supabase-notice").classList.toggle("hidden", Boolean(supabaseClient));
   document.querySelector("#file-origin-notice").classList.toggle("hidden", location.protocol !== "file:" || Boolean(authUser));
   if (!authUser) return;
-  document.querySelector("#profile-name").value = state.profile.name || "";
+  const name = accountDisplayName();
+  document.querySelector("#profile-account-initial").textContent = name.trim().charAt(0).toUpperCase() || "C";
+  document.querySelector("#profile-account-name").textContent = name;
+  document.querySelector("#profile-account-email").textContent = authUser.email || "Adresse e-mail non renseignée";
+  document.querySelector("#profile-sync-status").textContent = trainingLoadState === "loading"
+    ? "Synchronisation…"
+    : trainingLoadState === "error"
+      ? "Synchronisation à vérifier"
+      : "Compte synchronisé";
+  document.querySelector("#profile-summary-plan").textContent = state.plan ? plans[state.plan].name : "À choisir";
+  document.querySelector("#profile-summary-race").textContent = state.plan && state.raceDate
+    ? `Course le ${formatDate(new Date(`${state.raceDate}T12:00:00`), { day: "numeric", month: "short", year: "numeric" })}`
+    : "Date de course à définir";
+  document.querySelector("#profile-summary-volume").textContent = state.profile.weeklyKm > 0
+    ? `${state.profile.weeklyKm.toLocaleString("fr-FR")} km`
+    : "À renseigner";
+  document.querySelector("#profile-summary-frequency").textContent = `${state.profile.sessionsPerWeek || 4} sorties`;
+  document.querySelector("#profile-summary-workouts").textContent = trainingLoadState === "loading"
+    ? "…"
+    : trainingSessions.length.toLocaleString("fr-FR");
+  document.querySelector("#profile-submit").textContent = state.plan
+    ? "Mettre à jour mon programme →"
+    : "Créer mon programme →";
+  document.querySelector("#profile-name").value = state.profile.name || authUser.user_metadata?.display_name || "";
   document.querySelector("#profile-plan").value = state.plan || "";
   document.querySelector("#profile-race-date").value = state.raceDate || "";
   document.querySelector("#profile-weekly-km").value = state.profile.weeklyKm || "";
@@ -377,7 +407,7 @@ async function loadTrainingSessions(userId) {
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabaseClient
       .from("training_sessions")
-      .select("id, user_id, session_date, session_type, distance_km, duration_minutes, effort, elevation_gain_m, notes, created_at")
+      .select("id, user_id, session_date, session_type, distance_km, duration_minutes, effort, elevation_gain_m, notes, planned_session_id, planned_plan_signature, created_at")
       .eq("user_id", userId)
       .order("session_date", { ascending: false })
       .order("created_at", { ascending: false })
@@ -635,7 +665,77 @@ async function createProgram(event) {
   }
 }
 
-function checked(key) { return Boolean(state.completed[key]); }
+function currentPlanSignature() {
+  if (!state.plan) return "";
+  return [state.plan, state.raceDate, state.profile.weeklyKm, state.profile.sessionsPerWeek].join(":");
+}
+
+function scheduledWorkouts() {
+  if (!state.plan) return [];
+  const scheduled = [];
+  for (let weekIndex = 0; weekIndex < plans[state.plan].duration; weekIndex++) {
+    const week = getWeekData(weekIndex);
+    const dates = getWeekDates(weekIndex);
+    week.sessions.forEach((session, index) => scheduled.push({ session, date: dates[index], weekIndex }));
+  }
+  return scheduled;
+}
+
+function linkedTrainingSession(sessionId) {
+  const signature = currentPlanSignature();
+  if (!signature) return null;
+  return trainingSessions.find(session =>
+    session.planned_session_id === sessionId &&
+    session.planned_plan_signature === signature
+  ) || null;
+}
+
+function checked(key) {
+  return Boolean(state.completed[key] || linkedTrainingSession(key));
+}
+
+function renderPlannedSessionOptions() {
+  const select = document.querySelector("#workout-plan-session");
+  const selectedSessionId = select.value;
+  select.replaceChildren(new Option("Sortie libre — aucune séance prévue", ""));
+  if (state.plan) {
+    const linkedIds = new Set(trainingSessions
+      .filter(session => session.planned_plan_signature === currentPlanSignature())
+      .map(session => session.planned_session_id));
+    const today = dateInputValue(new Date());
+    const available = scheduledWorkouts().filter(item =>
+      dateInputValue(item.date) <= today && !linkedIds.has(item.session.id)
+    );
+    available.forEach(({ session, date, weekIndex }) => {
+      const option = new Option(
+        `Semaine ${weekIndex + 1} · ${formatDate(date, { day: "numeric", month: "short" })} · ${session.title} · ${session.distance.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km`,
+        session.id
+      );
+      select.append(option);
+    });
+    if (!available.length && trainingLoadState === "ready") {
+      select.append(new Option("Aucune séance passée à associer", "", false, false));
+      select.lastElementChild.disabled = true;
+    }
+  }
+  select.disabled = trainingLoadState !== "ready";
+  select.value = [...select.options].some(option => option.value === selectedSessionId && selectedSessionId)
+    ? selectedSessionId
+    : "";
+}
+
+function fillWorkoutFromPlannedSession() {
+  const sessionId = document.querySelector("#workout-plan-session").value;
+  if (!sessionId) return;
+  const planned = scheduledWorkouts().find(item => item.session.id === sessionId);
+  if (!planned) return;
+  document.querySelector("#workout-date").value = dateInputValue(planned.date);
+  document.querySelector("#workout-distance").value = planned.session.distance;
+  const type = planned.session.type;
+  document.querySelector("#workout-type").value = state.plan === "trail" && ["longue", "course"].includes(type)
+    ? "trail"
+    : ({ qualite: "quality", facile: "easy", recuperation: "recovery", longue: "long", course: "long" })[type] || "easy";
+}
 
 function setView(view) {
   const titles = { dashboard: "Vue d'ensemble", program: "Mon programme", progress: "Ma progression", profile: "Mon profil" };
@@ -697,6 +797,14 @@ function renderDashboard() {
   document.querySelector("#countdown-race").textContent = state.plan ? `${plans[state.plan].name} · ${formatDate(getRaceDate(), { day: "numeric", month: "long", year: "numeric" })}` : "Choisis ta course";
   const activeCards = document.querySelectorAll(".plan-card");
   activeCards.forEach(card => card.classList.toggle("selected", card.dataset.plan === state.plan));
+  document.querySelector("#dashboard-plan-picker").classList.toggle("hidden", Boolean(state.plan));
+  document.querySelector("#dashboard-current-plan").classList.toggle("hidden", !state.plan);
+  if (state.plan) {
+    const plan = plans[state.plan];
+    document.querySelector("#dashboard-current-plan-name").textContent = plan.name;
+    document.querySelector("#dashboard-current-plan-details").textContent =
+      `${plan.distance.toLocaleString("fr-FR")} km · ${plan.duration} semaines · ${state.profile.sessionsPerWeek} sorties / semaine · course le ${formatDate(getRaceDate(), { day: "numeric", month: "long", year: "numeric" })} · semaine ${getCurrentWeekIndex() + 1}/${plan.duration}`;
+  }
   if (!state.plan) {
     document.querySelector("#weekly-target").textContent = authUser ? "Aucun plan hebdomadaire défini" : "Connecte-toi pour synchroniser tes sorties";
     document.querySelector("#weekly-progress-bar").style.width = "0%";
@@ -795,6 +903,7 @@ function renderProgram() {
   const sessionsList = document.querySelector("#sessions-list");
   sessionsList.replaceChildren();
   week.sessions.forEach((session, index) => {
+    const linkedRun = linkedTrainingSession(session.id);
     const row = document.createElement("article");
     row.className = `workout${checked(session.id) ? " completed" : ""}`;
     const day = document.createElement("div");
@@ -817,7 +926,9 @@ function renderProgram() {
     description.textContent = session.description;
     const focus = document.createElement("div");
     focus.className = "workout-focus";
-    focus.textContent = session.focus;
+    focus.textContent = linkedRun
+      ? `Réalisée · ${Number(linkedRun.distance_km).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} km · ${linkedRun.duration_minutes} min · RPE ${linkedRun.effort}/10.`
+      : session.focus;
     main.append(title, description, focus);
     const aside = document.createElement("div");
     aside.className = "workout-aside";
@@ -827,7 +938,11 @@ function renderProgram() {
     const check = document.createElement("button");
     check.type = "button";
     check.className = `check-button${checked(session.id) ? " checked" : ""}`;
-    check.setAttribute("aria-label", `${checked(session.id) ? "Annuler" : "Valider"} : ${session.title}`);
+    check.disabled = Boolean(linkedRun);
+    check.title = linkedRun ? "Réalisée et enregistrée dans le carnet" : "";
+    check.setAttribute("aria-label", linkedRun
+      ? `Réalisée et enregistrée : ${session.title}`
+      : `${checked(session.id) ? "Annuler" : "Valider"} : ${session.title}`);
     check.setAttribute("aria-pressed", String(checked(session.id)));
     check.textContent = checked(session.id) ? "✓" : "";
     check.addEventListener("click", () => toggleSession(session.id));
@@ -861,6 +976,8 @@ function updateWorkoutLoadPreview() {
 function renderWorkoutHistory() {
   const history = document.querySelector("#workout-history");
   history.replaceChildren();
+  const plannedById = new Map(scheduledWorkouts().map(item => [item.session.id, item]));
+  const planSignature = currentPlanSignature();
   trainingSessions.slice(0, 20).forEach(session => {
     const item = document.createElement("article");
     item.className = "workout-history-item";
@@ -874,6 +991,15 @@ function renderWorkoutHistory() {
     const notes = document.createElement("p");
     notes.textContent = session.notes || "";
     details.append(title, meta);
+    if (session.planned_plan_signature === planSignature && session.planned_session_id) {
+      const planned = plannedById.get(session.planned_session_id);
+      if (planned) {
+        const linkedPlan = document.createElement("span");
+        linkedPlan.className = "workout-planned-badge";
+        linkedPlan.textContent = `Programme · semaine ${planned.weekIndex + 1} · ${planned.session.title}`;
+        details.append(linkedPlan);
+      }
+    }
     if (session.notes) details.append(notes);
     const indicators = document.createElement("div");
     indicators.className = "workout-history-indicators";
@@ -962,15 +1088,25 @@ async function submitWorkout(event) {
     duration_minutes: Number(document.querySelector("#workout-duration").value),
     effort: Number(document.querySelector("#workout-effort").value),
     elevation_gain_m: Number(document.querySelector("#workout-elevation").value) || 0,
-    notes: document.querySelector("#workout-notes").value.trim()
+    notes: document.querySelector("#workout-notes").value.trim(),
+    planned_session_id: document.querySelector("#workout-plan-session").value || null,
+    planned_plan_signature: document.querySelector("#workout-plan-session").value ? currentPlanSignature() : null
   };
+  if (payload.planned_session_id && (
+    !scheduledWorkouts().some(item => item.session.id === payload.planned_session_id) ||
+    linkedTrainingSession(payload.planned_session_id)
+  )) {
+    showFormMessage("#workout-message", "Cette séance est déjà reliée ou ne fait plus partie du programme actuel. Choisis-en une autre.", true);
+    renderPlannedSessionOptions();
+    return;
+  }
   button.disabled = true;
   showFormMessage("#workout-message", "Enregistrement de ta séance…");
   try {
     const { data, error } = await supabaseClient
       .from("training_sessions")
       .insert(payload)
-      .select("id, user_id, session_date, session_type, distance_km, duration_minutes, effort, elevation_gain_m, notes, created_at")
+      .select("id, user_id, session_date, session_type, distance_km, duration_minutes, effort, elevation_gain_m, notes, planned_session_id, planned_plan_signature, created_at")
       .single();
     if (error) throw error;
     if (authUser?.id !== userId) return;
@@ -993,6 +1129,7 @@ function renderProgress() {
   const isSignedIn = Boolean(authUser);
   document.querySelector("#workout-login-prompt").classList.toggle("hidden", isSignedIn);
   document.querySelector("#workout-recorder").classList.toggle("hidden", !isSignedIn);
+  renderPlannedSessionOptions();
   const loadStatus = document.querySelector("#workout-load-status");
   loadStatus.textContent = trainingLoadState === "loading"
     ? "Chargement de tes données…"
@@ -1090,7 +1227,7 @@ document.querySelectorAll("[data-view]").forEach(button => button.addEventListen
 }));
 document.querySelectorAll("[data-go]").forEach(button => button.addEventListener("click", () => setView(button.dataset.go)));
 document.querySelectorAll("[data-plan]").forEach(button => button.addEventListener("click", () => selectPlan(button.dataset.plan)));
-document.querySelector("#change-plan").addEventListener("click", () => setView("dashboard"));
+document.querySelector("#change-plan").addEventListener("click", () => setView("profile"));
 document.querySelector("#prev-week").addEventListener("click", () => { currentWeek--; renderProgram(); });
 document.querySelector("#next-week").addEventListener("click", () => { currentWeek++; renderProgram(); });
 document.querySelector("#auth-form").addEventListener("submit", submitAuth);
@@ -1098,6 +1235,7 @@ document.querySelector("#auth-switch").addEventListener("click", () => setAuthMo
 document.querySelector("#profile-editor").addEventListener("submit", createProgram);
 document.querySelector("#save-profile").addEventListener("click", saveProfileOnly);
 document.querySelector("#workout-form").addEventListener("submit", submitWorkout);
+document.querySelector("#workout-plan-session").addEventListener("change", fillWorkoutFromPlannedSession);
 ["#workout-duration", "#workout-effort"].forEach(selector => {
   document.querySelector(selector).addEventListener("input", updateWorkoutLoadPreview);
   document.querySelector(selector).addEventListener("change", updateWorkoutLoadPreview);
